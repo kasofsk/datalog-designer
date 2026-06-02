@@ -1,10 +1,10 @@
-# deslog — statically verifiable design specs
+# Datalog Designer — statically verifiable design specs
 
 A design system for writing software plans as **formal, queryable specifications**
 instead of prose.
 
 Markdown plans drift: a statement on page 1 quietly contradicts one on page 7 and
-nothing catches it. deslog plans are written in **Datalog** (evaluated with
+nothing catches it. Specs are written in **Datalog** (evaluated with
 [Soufflé](https://souffle-lang.github.io/)), so every statement about the plan is
 made in a formal language and can be *checked*: it either belongs to the language
 or it doesn't, follows from the facts or it doesn't, is consistent with the rest of
