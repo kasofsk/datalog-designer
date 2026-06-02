@@ -1,0 +1,45 @@
+// =============================================================
+//  viz.dl — re-export the relations the graph renderer consumes.
+//  Includes the plan (which includes schema + rules), then adds
+//  .output directives for the structural + derived relations.
+// =============================================================
+
+#include "../plans/pomodoro.dl"
+
+// structure
+.output state
+.output initial_state
+.output terminal_state
+.output running_state
+.output action
+.output actor
+.output transition
+.output guard
+.output effect
+.output counts_pomodoro
+
+// fields
+.output field
+.output field_type
+.output field_default
+.output field_min
+.output field_max
+.output editable_in
+
+// features + grounding
+.output feature
+.output feature_state
+.output feature_action
+.output feature_field
+
+// invariants
+.output must_reach
+.output never_action
+.output only_in
+
+// flows
+.output flow
+.output step
+
+// derived
+.output reachable

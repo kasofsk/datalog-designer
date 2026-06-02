@@ -1,0 +1,171 @@
+// =============================================================
+//  rules.dl — derivations and invariant checks
+//
+//  Derived views describe the spec (availability, reachability).
+//  Integrity relations encode the invariants: each MUST be empty
+//  for the spec to be valid. check.sh fails on any non-empty one.
+// =============================================================
+
+// ---- availability -------------------------------------------
+.decl available(s: State, a: Action)
+available(S, A) :- transition(S, A, _).
+
+.decl user_available(s: State, a: Action)
+user_available(S, A) :- available(S, A), actor(A, "user").
+
+.decl system_available(s: State, a: Action)
+system_available(S, A) :- available(S, A), actor(A, "system").
+
+// ---- reachability -------------------------------------------
+.decl step_to(from: State, to: State)
+step_to(F, T) :- transition(F, _, T).
+
+.decl reachable(s: State)
+reachable(S) :- initial_state(S).
+reachable(T) :- reachable(F), step_to(F, T).
+
+// transitive closure: F can eventually reach T
+.decl can_reach(from: State, to: State)
+can_reach(F, T) :- step_to(F, T).
+can_reach(F, T) :- step_to(F, M), can_reach(M, T).
+
+// =============================================================
+//  INVARIANTS (each relation below must be empty)
+// =============================================================
+
+// ---- referential integrity ----------------------------------
+.decl unknown_state_in_transition(from: State, via: Action, to: State)
+unknown_state_in_transition(F,A,T) :- transition(F,A,T), !state(F).
+unknown_state_in_transition(F,A,T) :- transition(F,A,T), !state(T).
+
+.decl unknown_action_in_transition(from: State, via: Action, to: State)
+unknown_action_in_transition(F,A,T) :- transition(F,A,T), !action(A).
+
+.decl has_actor(a: Action)
+has_actor(A) :- actor(A, _).
+
+.decl action_without_actor(a: Action)
+action_without_actor(A) :- action(A), !has_actor(A).
+
+.decl invalid_actor(a: Action, who: Actor)
+invalid_actor(A, W) :- actor(A, W), !valid_actor(W).
+
+.decl invalid_ftype(name: Field, t: FType)
+invalid_ftype(F, T) :- field_type(F, T), !valid_ftype(T).
+
+// ---- state-machine well-formedness --------------------------
+
+// exactly one initial state (fires with the count when it isn't 1)
+.decl initial_total(n: number)
+initial_total(N) :- N = count : { initial_state(_) }.
+
+.decl bad_initial_count(n: number)
+bad_initial_count(N) :- initial_total(N), N != 1.
+
+// a non-terminal state with no way out is a dead end
+.decl has_out(s: State)
+has_out(S) :- transition(S, _, _).
+
+.decl dead_end_state(s: State)
+dead_end_state(S) :- state(S), !terminal_state(S), !has_out(S).
+
+// a declared state the user can never get to
+.decl unreachable_state(s: State)
+unreachable_state(S) :- state(S), !reachable(S).
+
+// ---- liveness: must_reach -----------------------------------
+// every reachable state must be able to get back to each must_reach target
+.decl reaches_target(s: State, target: State)
+reaches_target(S, Tg) :- must_reach(Tg), reachable(S), can_reach(S, Tg).
+reaches_target(S, Tg) :- must_reach(Tg), reachable(S), S = Tg.
+
+.decl missing_reach(s: State, target: State)
+missing_reach(S, Tg) :- must_reach(Tg), reachable(S), !reaches_target(S, Tg).
+
+// ---- capability invariants ----------------------------------
+// a forbidden action is available somewhere
+.decl forbidden_available(a: Action, s: State)
+forbidden_available(A, S) :- never_action(A), available(S, A).
+
+// an action declared only_in S is available somewhere else
+.decl only_in_violation(a: Action, s: State, allowed: State)
+only_in_violation(A, S, Allowed) :- only_in(A, Allowed), available(S, A), S != Allowed.
+
+// ---- field constraints --------------------------------------
+.decl field_bounds_swapped(name: Field, lo: number, hi: number)
+field_bounds_swapped(F, Lo, Hi) :- field_min(F, Lo), field_max(F, Hi), Lo > Hi.
+
+// default outside the declared range (uses the numeric default relation,
+// so text fields with non-numeric defaults are never parsed)
+.decl field_default_out_of_range(name: Field, def: number)
+field_default_out_of_range(F, D) :- field_default_num(F, D), field_min(F, Lo), D < Lo.
+field_default_out_of_range(F, D) :- field_default_num(F, D), field_max(F, Hi), D > Hi.
+
+// safety invariant: config must not be editable while a timer is running
+.decl edit_while_running(name: Field, s: State)
+edit_while_running(F, S) :- editable_in(F, S), running_state(S).
+
+// ---- domain invariant: strict pomodoro counter --------------
+// only a work interval that auto-completes may count toward pomodoros
+.decl bad_pomodoro_count(from: State, via: Action, to: State)
+bad_pomodoro_count(F,A,T) :- counts_pomodoro(F,A,T), F != "S_work".
+bad_pomodoro_count(F,A,T) :- counts_pomodoro(F,A,T), A != "A_complete".
+
+// ---- feature grounding --------------------------------------
+.decl feature_linked(f: Feature)
+feature_linked(F) :- feature_state(F,_).
+feature_linked(F) :- feature_action(F,_).
+feature_linked(F) :- feature_field(F,_).
+
+// a feature not tied to any state/action/field is ungrounded prose
+.decl orphan_feature(f: Feature)
+orphan_feature(F) :- feature(F), !feature_linked(F).
+
+// feature links pointing at things that don't exist
+.decl unknown_feature_state(f: Feature, s: State)
+unknown_feature_state(F,S) :- feature_state(F,S), !state(S).
+.decl unknown_feature_action(f: Feature, a: Action)
+unknown_feature_action(F,A) :- feature_action(F,A), !action(A).
+.decl unknown_feature_field(f: Feature, name: Field)
+unknown_feature_field(F,N) :- feature_field(F,N), !field(N).
+
+// ---- flow integrity -----------------------------------------
+// a flow step that is not a real transition is fiction
+.decl flow_step_not_a_transition(name: Flow, seq: number, from: State, via: Action, to: State)
+flow_step_not_a_transition(Fl,O,Fr,A,T) :- step(Fl,O,Fr,A,T), !transition(Fr,A,T).
+
+// consecutive steps must chain: step n's target == step n+1's source
+.decl flow_discontinuity(name: Flow, at: number)
+flow_discontinuity(Fl, O1) :-
+    step(Fl, O1, _, _, To),
+    step(Fl, O2, From2, _, _),
+    O2 = O1 + 1, To != From2.
+
+// ---- outputs ------------------------------------------------
+// informational views
+.output reachable
+.output user_available
+.output system_available
+
+// invariant checks (any non-empty = spec is broken)
+.output unknown_state_in_transition
+.output unknown_action_in_transition
+.output action_without_actor
+.output invalid_actor
+.output invalid_ftype
+.output bad_initial_count
+.output dead_end_state
+.output unreachable_state
+.output missing_reach
+.output forbidden_available
+.output only_in_violation
+.output field_bounds_swapped
+.output field_default_out_of_range
+.output edit_while_running
+.output bad_pomodoro_count
+.output orphan_feature
+.output unknown_feature_state
+.output unknown_feature_action
+.output unknown_feature_field
+.output flow_step_not_a_transition
+.output flow_discontinuity

@@ -1,0 +1,84 @@
+// =============================================================
+//  schema.dl — the DSL for behavioral specs
+//
+//  A plan describes WHAT THE APP DOES, not the work to build it.
+//  The model is a state machine over UI modes:
+//    - states      : the modes the app can be in
+//    - actions     : what causes a move between modes (user or system)
+//    - transitions : (state, action) -> state, optionally guarded
+//    - fields      : configurable inputs and their constraints
+//    - features    : user-visible capabilities, grounded in the above
+//    - invariants  : declared truths about what users can / can't do
+//    - flows       : named user journeys (sequences of transitions)
+//
+//  Anything outside this vocabulary is unsayable. Extend here.
+// =============================================================
+
+// ---- types --------------------------------------------------
+.type Feature <: symbol
+.type State   <: symbol
+.type Action  <: symbol
+.type Actor   <: symbol   // "user" | "system"
+.type Field   <: symbol
+.type FType   <: symbol   // "int" | "text" | "bool"
+.type Flow    <: symbol
+
+// ---- features (user-visible capabilities) -------------------
+.decl feature(f: Feature)
+.decl feature_summary(f: Feature, text: symbol)
+.decl behavior(f: Feature, text: symbol)        // a checkable behavioral statement
+
+// what a feature is grounded in (must point at real states/actions/fields)
+.decl feature_state(f: Feature, s: State)
+.decl feature_action(f: Feature, a: Action)
+.decl feature_field(f: Feature, name: Field)
+
+// ---- states (UI modes) --------------------------------------
+.decl state(s: State)
+.decl state_desc(s: State, text: symbol)
+.decl initial_state(s: State)                    // exactly one expected
+.decl terminal_state(s: State)                   // a state with no required exit
+.decl running_state(s: State)                    // app is actively timing in this mode
+
+// ---- actions ------------------------------------------------
+.decl action(a: Action)
+.decl action_desc(a: Action, text: symbol)
+.decl actor(a: Action, who: Actor)               // who triggers it: user | system
+
+// ---- transitions --------------------------------------------
+.decl transition(from: State, via: Action, to: State)
+.decl guard(from: State, via: Action, to: State, cond: symbol)   // precondition (doc)
+.decl effect(from: State, via: Action, to: State, eff: symbol)   // state change (doc)
+.decl counts_pomodoro(from: State, via: Action, to: State)       // increments the strict counter
+
+// ---- config fields ------------------------------------------
+.decl field(name: Field)
+.decl field_type(name: Field, t: FType)
+.decl field_desc(name: Field, text: symbol)
+.decl field_default(name: Field, val: symbol)       // display form (any type)
+.decl field_default_num(name: Field, n: number)     // numeric default (int fields)
+.decl field_min(name: Field, lo: number)
+.decl field_max(name: Field, hi: number)
+.decl field_required(name: Field)
+.decl field_ephemeral(name: Field)               // not persisted across sessions
+.decl editable_in(name: Field, s: State)         // the state(s) where it can be edited
+
+// ---- declared invariants (expectations to verify) -----------
+.decl must_reach(target: State)                  // reachable from EVERY reachable state
+.decl never_action(a: Action)                    // must never be available anywhere
+.decl only_in(a: Action, s: State)               // may only be available in this state
+
+// ---- flows (named user journeys) ----------------------------
+.decl flow(name: Flow)
+.decl flow_desc(name: Flow, text: symbol)
+.decl step(name: Flow, seq: number, from: State, via: Action, to: State)
+
+// ---- enumerations -------------------------------------------
+.decl valid_actor(who: Actor)
+valid_actor("user").
+valid_actor("system").
+
+.decl valid_ftype(t: FType)
+valid_ftype("int").
+valid_ftype("text").
+valid_ftype("bool").

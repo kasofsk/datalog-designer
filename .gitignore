@@ -1,0 +1,5 @@
+# Soufflé output — regenerated from .dl source
+out/
+
+# macOS
+.DS_Store

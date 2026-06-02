@@ -1,0 +1,259 @@
+// =============================================================
+//  pomodoro.dl — behavioral spec for the vanilla-web pomodoro app
+//
+//  Describes what the app DOES: its modes, what the user and the
+//  system can do in each, the config the user controls, and the
+//  invariants that constrain all of it.
+//
+//  Includes schema.dl (vocabulary) and rules.dl (checks).
+// =============================================================
+
+#include "../dsl/schema.dl"
+#include "../dsl/rules.dl"
+
+// =============================================================
+//  STATES — the modes the app can be in
+// =============================================================
+state("S_home").
+state_desc("S_home", "Config screen: shows current settings + optional task label + Start.").
+initial_state("S_home").
+
+state("S_work").
+state_desc("S_work", "A work interval is counting down.").
+running_state("S_work").
+
+state("S_short_break").
+state_desc("S_short_break", "A short break is counting down.").
+running_state("S_short_break").
+
+state("S_long_break").
+state_desc("S_long_break", "A long break is counting down (every cycle_length-th break).").
+running_state("S_long_break").
+
+// =============================================================
+//  ACTIONS — what causes a move between modes
+// =============================================================
+action("A_edit").
+action_desc("A_edit", "Edit a config field on the home screen (validated on input).").
+actor("A_edit", "user").
+
+action("A_start").
+action_desc("A_start", "Begin a session: start the first work interval.").
+actor("A_start", "user").
+
+action("A_skip").
+action_desc("A_skip", "End the current interval early and advance to the next.").
+actor("A_skip", "user").
+
+action("A_stop").
+action_desc("A_stop", "End the session and return to the home screen.").
+actor("A_stop", "user").
+
+action("A_complete").
+action_desc("A_complete", "An interval reached zero; the app auto-advances and chimes.").
+actor("A_complete", "system").
+
+// NOTE: there is deliberately no A_pause and no A_reset action.
+// The invariants below assert they must never exist.
+
+// =============================================================
+//  TRANSITIONS — (state, action) -> state, with guards/effects
+// =============================================================
+
+// --- from home ---
+transition("S_home", "A_edit", "S_home").
+effect("S_home", "A_edit", "S_home", "Update one config field; clamp to its valid range.").
+
+transition("S_home", "A_start", "S_work").
+effect("S_home", "A_start", "S_work", "start_time := now; completed_count := 0.").
+
+// --- from work ---
+transition("S_work", "A_skip", "S_short_break").
+guard("S_work", "A_skip", "S_short_break", "completed_count mod cycle_length != cycle_length-1").
+effect("S_work", "A_skip", "S_short_break", "Advance WITHOUT counting (strict counter).").
+
+transition("S_work", "A_skip", "S_long_break").
+guard("S_work", "A_skip", "S_long_break", "completed_count mod cycle_length == cycle_length-1").
+effect("S_work", "A_skip", "S_long_break", "Advance WITHOUT counting (strict counter).").
+
+transition("S_work", "A_complete", "S_short_break").
+guard("S_work", "A_complete", "S_short_break", "interval=0 AND completed_count mod cycle_length != cycle_length-1").
+effect("S_work", "A_complete", "S_short_break", "completed_count += 1; chime.").
+counts_pomodoro("S_work", "A_complete", "S_short_break").
+
+transition("S_work", "A_complete", "S_long_break").
+guard("S_work", "A_complete", "S_long_break", "interval=0 AND completed_count mod cycle_length == cycle_length-1").
+effect("S_work", "A_complete", "S_long_break", "completed_count += 1; chime.").
+counts_pomodoro("S_work", "A_complete", "S_long_break").
+
+transition("S_work", "A_stop", "S_home").
+effect("S_work", "A_stop", "S_home", "End session; completed_count := 0.").
+
+// --- from short break ---
+transition("S_short_break", "A_skip", "S_work").
+transition("S_short_break", "A_complete", "S_work").
+effect("S_short_break", "A_complete", "S_work", "chime.").
+transition("S_short_break", "A_stop", "S_home").
+effect("S_short_break", "A_stop", "S_home", "End session; completed_count := 0.").
+
+// --- from long break ---
+transition("S_long_break", "A_skip", "S_work").
+transition("S_long_break", "A_complete", "S_work").
+effect("S_long_break", "A_complete", "S_work", "chime.").
+transition("S_long_break", "A_stop", "S_home").
+effect("S_long_break", "A_stop", "S_home", "End session; completed_count := 0.").
+
+// =============================================================
+//  CONFIG FIELDS — what the user controls, and the limits
+// =============================================================
+field("f_work").
+field_type("f_work", "int").
+field_desc("f_work", "Work interval length (minutes).").
+field_default("f_work", "25"). field_default_num("f_work", 25). field_min("f_work", 1). field_max("f_work", 120).
+field_required("f_work"). editable_in("f_work", "S_home").
+
+field("f_short_break").
+field_type("f_short_break", "int").
+field_desc("f_short_break", "Short break length (minutes).").
+field_default("f_short_break", "5"). field_default_num("f_short_break", 5). field_min("f_short_break", 1). field_max("f_short_break", 60).
+field_required("f_short_break"). editable_in("f_short_break", "S_home").
+
+field("f_long_break").
+field_type("f_long_break", "int").
+field_desc("f_long_break", "Long break length (minutes).").
+field_default("f_long_break", "15"). field_default_num("f_long_break", 15). field_min("f_long_break", 1). field_max("f_long_break", 120).
+field_required("f_long_break"). editable_in("f_long_break", "S_home").
+
+field("f_cycle_length").
+field_type("f_cycle_length", "int").
+field_desc("f_cycle_length", "A long break occurs every Nth pomodoro.").
+field_default("f_cycle_length", "4"). field_default_num("f_cycle_length", 4). field_min("f_cycle_length", 1). field_max("f_cycle_length", 10).
+field_required("f_cycle_length"). editable_in("f_cycle_length", "S_home").
+
+field("f_task_label").
+field_type("f_task_label", "text").
+field_desc("f_task_label", "Optional 'what are you working on?' label.").
+field_default("f_task_label", "").
+field_ephemeral("f_task_label").                 // not persisted across sessions
+editable_in("f_task_label", "S_home").
+
+// =============================================================
+//  INVARIANTS — what users can and can't do
+// =============================================================
+must_reach("S_home").          // from anywhere, the user can always quit to home
+never_action("A_pause").       // pausing must never be possible
+never_action("A_reset").       // resetting must never be possible
+only_in("A_edit", "S_home").   // config can only be edited at home
+only_in("A_start", "S_home").  // a session can only be started from home
+
+// =============================================================
+//  FEATURES — user-visible capabilities, grounded in the above
+// =============================================================
+
+feature("F_configure_session").
+feature_summary("F_configure_session", "Home screen shows current config + optional label; user can edit any value.").
+behavior("F_configure_session", "Home shows fields for work/short_break/long_break/cycle_length, an optional label, and Start.").
+feature_state("F_configure_session", "S_home").
+feature_action("F_configure_session", "A_edit").
+feature_field("F_configure_session", "f_work").
+feature_field("F_configure_session", "f_short_break").
+feature_field("F_configure_session", "f_long_break").
+feature_field("F_configure_session", "f_cycle_length").
+feature_field("F_configure_session", "f_task_label").
+
+feature("F_persist_config").
+feature_summary("F_persist_config", "Durations + cycle length persist across reloads; the task label is ephemeral.").
+behavior("F_persist_config", "Reload preserves work/short_break/long_break/cycle_length; the label resets to empty.").
+behavior("F_persist_config", "First-ever open uses defaults 25 / 5 / 15 / 4.").
+feature_state("F_persist_config", "S_home").
+feature_field("F_persist_config", "f_work").
+feature_field("F_persist_config", "f_short_break").
+feature_field("F_persist_config", "f_long_break").
+feature_field("F_persist_config", "f_cycle_length").
+feature_field("F_persist_config", "f_task_label").
+
+feature("F_validate_inputs").
+feature_summary("F_validate_inputs", "Config values are clamped to sane integer ranges; Start is blocked on invalid input.").
+behavior("F_validate_inputs", "work 1..120, short_break 1..60, long_break 1..120, cycle_length 1..10; integers only.").
+behavior("F_validate_inputs", "Lower bound is 1 because a zero-length interval can never reach zero by counting down.").
+feature_action("F_validate_inputs", "A_edit").
+feature_field("F_validate_inputs", "f_work").
+feature_field("F_validate_inputs", "f_short_break").
+feature_field("F_validate_inputs", "f_long_break").
+feature_field("F_validate_inputs", "f_cycle_length").
+
+feature("F_start_session").
+feature_summary("F_start_session", "Start moves from home into the first work interval.").
+behavior("F_start_session", "Start records start_time := now, zeroes the counter, and shows the work interval.").
+feature_state("F_start_session", "S_work").
+feature_action("F_start_session", "A_start").
+
+feature("F_run_timer").
+feature_summary("F_run_timer", "Running screen shows phase, remaining mm:ss, and the counter; updates every second.").
+behavior("F_run_timer", "Remaining time is derived as scheduled_end - now; never counted from setInterval ticks.").
+behavior("F_run_timer", "Hiding the tab causes no drift; on return the display reflects true wallclock.").
+feature_state("F_run_timer", "S_work").
+feature_state("F_run_timer", "S_short_break").
+feature_state("F_run_timer", "S_long_break").
+
+feature("F_phase_schedule").
+feature_summary("F_phase_schedule", "Phases cycle work / short_break, with a long_break replacing every cycle_length-th short break.").
+behavior("F_phase_schedule", "Current phase and remaining time are a pure function of start_time, config, and now.").
+feature_state("F_phase_schedule", "S_work").
+feature_state("F_phase_schedule", "S_short_break").
+feature_state("F_phase_schedule", "S_long_break").
+feature_action("F_phase_schedule", "A_complete").
+
+feature("F_auto_advance").
+feature_summary("F_auto_advance", "When an interval hits zero, the app advances to the next automatically.").
+behavior("F_auto_advance", "No Continue button: the transition is system-triggered (A_complete).").
+feature_action("F_auto_advance", "A_complete").
+
+feature("F_skip").
+feature_summary("F_skip", "Skip ends the current interval early and advances; skipped work does NOT count.").
+behavior("F_skip", "Skip works in work and break phases; a skipped work interval never increments the counter.").
+feature_action("F_skip", "A_skip").
+
+feature("F_stop").
+feature_summary("F_stop", "Stop ends the session and returns to home; the counter clears, config is kept.").
+behavior("F_stop", "After Stop, home shows persisted config with the label cleared and counter at zero.").
+feature_state("F_stop", "S_home").
+feature_action("F_stop", "A_stop").
+
+feature("F_counter").
+feature_summary("F_counter", "A per-session counter of pomodoros that ran to zero (strict).").
+behavior("F_counter", "Only a work interval that auto-completes increments the counter; skip and stop never do.").
+feature_action("F_counter", "A_complete").
+
+feature("F_chime").
+feature_summary("F_chime", "A single bundled chime plays at every interval boundary.").
+behavior("F_chime", "Chime fires on every phase transition; allowed because Start was a user gesture (no autoplay block).").
+feature_action("F_chime", "A_complete").
+feature_action("F_chime", "A_skip").
+
+// =============================================================
+//  FLOWS — named user journeys (every step must be a real transition)
+// =============================================================
+
+flow("flow_classic").
+flow_desc("flow_classic", "A full cycle of 4 pomodoros ending in a long break (auto-advancing).").
+step("flow_classic", 1, "S_home",        "A_start",    "S_work").
+step("flow_classic", 2, "S_work",        "A_complete", "S_short_break").
+step("flow_classic", 3, "S_short_break", "A_complete", "S_work").
+step("flow_classic", 4, "S_work",        "A_complete", "S_short_break").
+step("flow_classic", 5, "S_short_break", "A_complete", "S_work").
+step("flow_classic", 6, "S_work",        "A_complete", "S_short_break").
+step("flow_classic", 7, "S_short_break", "A_complete", "S_work").
+step("flow_classic", 8, "S_work",        "A_complete", "S_long_break").
+step("flow_classic", 9, "S_long_break",  "A_complete", "S_work").
+
+flow("flow_quit").
+flow_desc("flow_quit", "Start working, then stop back to home.").
+step("flow_quit", 1, "S_home", "A_start", "S_work").
+step("flow_quit", 2, "S_work", "A_stop",  "S_home").
+
+flow("flow_skip").
+flow_desc("flow_skip", "Skip a work interval into a break, then skip back to work.").
+step("flow_skip", 1, "S_home",        "A_start", "S_work").
+step("flow_skip", 2, "S_work",        "A_skip",  "S_short_break").
+step("flow_skip", 3, "S_short_break", "A_skip",  "S_work").
