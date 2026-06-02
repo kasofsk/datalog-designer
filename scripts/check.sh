@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Verify a behavioral spec: run Soufflé and report invariant violations.
-# Usage: scripts/check.sh plans/pomodoro.dl
+# Usage: scripts/check.sh test_projects/pomodoro.dl
 
 set -euo pipefail
 
-PLAN="${1:-plans/pomodoro.dl}"
+PLAN="${1:-test_projects/pomodoro.dl}"
 OUT="out"
 
 if [[ ! -f "$PLAN" ]]; then

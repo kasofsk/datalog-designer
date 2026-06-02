@@ -4,7 +4,7 @@
 //  .output directives for the structural + derived relations.
 // =============================================================
 
-#include "../plans/pomodoro.dl"
+#include "../test_projects/pomodoro.dl"
 
 // structure
 .output state
